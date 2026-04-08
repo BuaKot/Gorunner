@@ -1,35 +1,49 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"net/http"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
-var urlStore = make(map[string]string)
-
-const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+var (
+	ctx         = context.Background()
+	redisClient *redis.Client
+	charset     = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+)
 
 func main() {
+	// 1. เชื่อมต่อ Redis
+	redisClient = redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "",
+		DB:       0,
+	})
+
+	// ตรวจสอบการเชื่อมต่อ
+	_, err := redisClient.Ping(ctx).Result()
+	if err != nil {
+		panic(fmt.Sprintf("เชื่อมต่อ Redis ไม่ได้: %v", err))
+	}
+
 	rand.Seed(time.Now().UnixNano())
 
-	// Route สำหรับหน้าเว็บ
 	http.HandleFunc("/", handleIndex)
-	// Route สำหรับการย่อ URL (รับค่าจาก Form)
 	http.HandleFunc("/shorten", handleShorten)
 
-	fmt.Println("Server running at http://localhost:8080")
+	fmt.Println("Server running with Redis at http://localhost:8080")
 	http.ListenAndServe(":8080", nil)
 }
 
 func handleIndex(w http.ResponseWriter, r *http.Request) {
-	// ถ้า path ไม่ใช่ / (เช่น /abc) ให้ไปที่ Redirect logic
 	if r.URL.Path != "/" {
 		handleRedirect(w, r)
 		return
 	}
-	// ส่งไฟล์ index.html (เราจะสร้างไฟล์นี้ในขั้นตอนถัดไป)
 	http.ServeFile(w, r, "index.html")
 }
 
@@ -40,27 +54,32 @@ func handleShorten(w http.ResponseWriter, r *http.Request) {
 	}
 
 	longURL := r.FormValue("url")
-	if longURL == "" {
-		http.Error(w, "URL is required", http.StatusBadRequest)
+	code := generateCode(6)
+
+	// 2. บันทึกลง Redis (ตั้งให้หมดอายุใน 24 ชั่วโมง)
+	err := redisClient.Set(ctx, code, longURL, 24*time.Hour).Err()
+	if err != nil {
+		http.Error(w, "Error saving to Redis", http.StatusInternalServerError)
 		return
 	}
 
-	code := generateCode(6)
-	urlStore[code] = longURL
-
 	shortURL := fmt.Sprintf("http://localhost:8080/%s", code)
-
-	// ส่งผลลัพธ์กลับเป็นข้อความแบบง่ายๆ หรือจะทำหน้า Result ก็ได้
 	fmt.Fprintf(w, "Success! Your short URL is: %s", shortURL)
 }
 
 func handleRedirect(w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Path[1:]
-	longURL, exists := urlStore[code]
-	if !exists {
+
+	// 3. ดึงข้อมูลจาก Redis
+	longURL, err := redisClient.Get(ctx, code).Result()
+	if err == redis.Nil {
 		http.NotFound(w, r)
 		return
+	} else if err != nil {
+		http.Error(w, "Server Error", http.StatusInternalServerError)
+		return
 	}
+
 	http.Redirect(w, r, longURL, http.StatusFound)
 }
 
