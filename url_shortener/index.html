@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Go URL Shortener</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100 h-screen flex items-center justify-center">
+    <div class="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
+        <h1 class="text-2xl font-bold mb-6 text-center text-blue-600">Go URL Shortener</h1>
+
+        <form action="/shorten" method="POST" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">วางลิงก์ยาวๆ ที่นี่:</label>
+                <input type="url" name="url" required placeholder="https://example.com/very-long-link"
+                    class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+            </div>
+            <button type="submit"
+                class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition duration-200">
+                ย่อลิงก์เลย!
+            </button>
+        </form>
+
+        <div id="result" class="mt-6 hidden">
+            <p class="text-sm text-gray-600">ลิงก์ของคุณคือ:</p>
+            <div class="bg-gray-50 p-2 mt-2 rounded border border-dashed border-blue-400 text-blue-700 font-mono break-all"
+                id="shortUrl">
+            </div>
+        </div>
+    </div>
+    <script>
+        const form = document.querySelector('form');
+        form.onsubmit = async (e) => {
+            e.preventDefault();
+            const formData = new FormData(form);
+            const res = await fetch('/shorten', {
+                method: 'POST',
+                body: new URLSearchParams(formData)
+            });
+            const text = await res.text();
+
+            const resultDiv = document.getElementById('result');
+            const shortUrlInner = document.getElementById('shortUrl');
+
+            resultDiv.classList.remove('hidden');
+            shortUrlInner.innerText = text.replace("Success! Your short URL is: ", "");
+        };
+    </script>
+</body>
+
+</html>
